@@ -1,45 +1,71 @@
 const mongoose = require('mongoose');
-const { Schema, model } = mongoose;
+const Thought = require('./Thought');
 
-// Define the User schema
-const userSchema = new Schema({
+const userSchema = new mongoose.Schema({
   username: {
     type: String,
     unique: true,
     required: true,
-    trim: true
   },
   email: {
     type: String,
-    required: true,
     unique: true,
-    match: [/.+@.+\..+/, 'Please enter a valid email address']
+    required: true,
+    match: [
+      /^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/,
+      'Please fill a valid email address'
+    ],
   },
   thoughts: [
     {
-      type: Schema.Types.ObjectId,
-      ref: 'Thought'
-    }
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Thought',
+    },
   ],
   friends: [
     {
-      type: Schema.Types.ObjectId,
-      ref: 'User'
-    }
-  ]
-}, {
-  toJSON: {
-    virtuals: true
-  },
-  id: false
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+    },
+  ],
 });
 
-// Create a virtual property `friendCount` that gets the number of friends
 userSchema.virtual('friendCount').get(function() {
   return this.friends.length;
 });
 
-// Create the User model using the userSchema
-const User = model('User', userSchema);
+// Set the toJSON option
+userSchema.set('toJSON', {
+  virtuals: true,
+  versionKey: false, // Removes the __v field
+  transform: (doc, ret) => {
+    delete ret.__v;
+    return ret;
+  },
+});
 
+userSchema.set('toObject', {
+  virtuals: true,
+  versionKey: false, // Removes the __v field
+  transform: (doc, ret) => {
+    delete ret.__v;
+    return ret;
+  },
+});
+
+// Pre hook to remove associated thoughts when a user is deleted
+userSchema.pre('findOneAndDelete', async function(next) {
+  try {
+    const user = await this.model.findOne(this.getQuery());
+    console.log(`Deleting thoughts for user: ${user.username}`);
+    const result = await Thought.deleteMany({ username: user.username });
+    console.log(`Deleted ${result.deletedCount} thoughts.`);
+    next();
+  } catch (err) {
+    console.error('Error deleting thoughts:', err);
+    next(err);
+  }
+});
+
+const User = mongoose.model('User', userSchema);
 module.exports = User;
